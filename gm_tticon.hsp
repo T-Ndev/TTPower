@@ -1,0 +1,209 @@
+/***********************************************************
+
+	タスクトレイアイコン操作モジュール（シングルアイコン版）
+
+		【2006/7/6 更新】
+
+	【使い方】
+
+		任意のウィンドウにタスクトレイアイコン用の画像
+		（16*16ピクセル）を描画し、add_tticon命令を呼び出す。
+
+		登録できるアイコンは1つのみ。add_tticon命令を繰り返し
+		呼び出すことでアイコンを変更可能。
+
+		メインのスクリプト内に、必ず以下のようなサブルーチン
+		を記述し、タスクトレイアイコン上のイベントを処理する。
+
+;// （月影ともさんのtrayicon.hspから抜粋）
+;*onTrayIconEvent 
+;	// コレと似たようなやつを、使う側で作ってしてください。
+;	// この中で gotoをしてはイケマセン。必ず gosub で飛びましょう。
+;	// stopもいけません、returnで必ずここに戻ってきましょう。
+;	iconid = wParam
+;	switch lparam
+;		case $200 : swbreak ;// マウスがアイコンを触っただけ。
+;		case $201 : mes "アイコン("+iconid+")で左ボタンが押されました" : swbreak
+;		case $202 : mes "アイコン("+iconid+")で左ボタンが離されました" : swbreak
+;		case $203 : mes "アイコン("+iconid+")で左ボタンがダブルクリックされました" : swbreak
+;		case $204 : mes "アイコン("+iconid+")で右ボタンが押されました" : swbreak
+;		case $205 : mes "アイコン("+iconid+")で右ボタンが離されました" : swbreak
+;		case $206 : mes "アイコン("+iconid+")で右ボタンがダブルクリックされました" : swbreak
+;		case $207 : mes "アイコン("+iconid+")で真ん中のボタンが押されました" : swbreak
+;		case $208 : mes "アイコン("+iconid+")で真ん中のボタンが離されました" : swbreak
+;		case $209 : mes "アイコン("+iconid+")で真ん中のボタンがダブルクリックされました" : swbreak
+;	swend
+;	return ;// リターンを忘れない。
+
+
+	【命令一覧】
+
+	#deffunc add_tticon var wid, var posx, var posy, var tooltip
+		p1 = アイコン用の画像を取得するウィンドウID
+		p2 = 画像位置X座標
+		p3 = 画像位置Y座標
+		p4 = アイコンに設定するツールチップ文字列
+
+
+	【謝辞】
+
+	このモジュールを作るにあたって、以下のモジュールを参考に
+	させていただきました。
+
+	HSP3 で タスクトレイアイコンを作るモジュール 0.02（月影ともさん）
+		http://tsu.sakura.ne.jp/
+	HSPアイコン入出力モジュール（真紅さん）
+		http://www2.pf-x.net/~shink/
+
+***********************************************************/
+
+#include "gdi32.as"
+#include "user32.as"
+#include "shell32.as"
+
+#const	global	TRAYEVENT_OVER		$200
+#const	global	TRAYEVENT_LDOWN		$201
+#const	global	TRAYEVENT_LUP		$202
+#const	global	TRAYEVENT_LDCLICK	$203
+#const	global	TRAYEVENT_RDOWN		$204
+#const	global	TRAYEVENT_RUP		$205
+#const	global	TRAYEVENT_RDCLICK	$206
+#const	global	TRAYEVENT_WDOWN		$207
+#const	global	TRAYEVENT_WUP		$208
+#const	global	TRAYEVENT_WDCLICK	$209
+
+/**********************************************************/
+
+#module makeicon
+
+/**********************************************************/
+// 指定されたウィンドウからアイコンを作成し、
+// アイコンハンドルを返す
+/**********************************************************/
+#defcfunc make_icon var wid, var cpx, var cpy, var iconx, var icony, int skel
+;	wid		;アイコン用画像を取得するウィンドウID
+;	cpx		;アイコンにする左座標
+;	cpy		;アイコンにする上座標
+;	iconx	;アイコンの大きさｘ
+;	icony	;アイコンの大きさｙ
+;	skel	;透過処理をするか
+	gsel wid
+	mref bmscr,67
+
+	/* ビットマップを作成 */
+	CreateCompatibleDC bmscr.4			// デバイスコンテキストを作成
+	hdevcon = stat
+
+	CreateCompatibleBitmap bmscr.4,iconx,icony	// ビットマップオブジェクトを作成
+	hbmp = stat
+
+	SelectObject hdevcon,hbmp			// デバイスコンテキストへ割り当て
+	hobmp = stat						// オリジナルビットマップハンドル
+
+	// ウィンドウからコピー。0x00CC0020はSRCCOPY（ノーマル）
+	BitBlt hdevcon,0,0,iconx,icony,bmscr.4,cpx,cpy,0x00CC0020
+
+	CreateBitmap iconx,icony,1,1,0		// マスク用ビットマップオブジェクトを作成
+	hmaskbmp = stat						// マスク用ビットマップハンドル
+
+	/* マスク用ビットマップの作成 */
+	//if skel {
+		dim rgb,3
+		rgb = 0,0,0
+		SetBkColor hdevcon,rgb			// 透過色を設定
+
+		CreateCompatibleDC hdevcon			// マスク用デバイスコンテキスト
+		hmaskdc = stat						// マスク用デバイスコンテキストハンドル
+
+		SelectObject hmaskdc,hmaskbmp		// マスク用デバイスコンテキストに割り当て
+		homaskbmp = stat					// オリジナルマスク用ビットマップハンドル
+
+		BitBlt hmaskdc,0,0,iconx,icony,hdevcon,0,0,0x00CC0020	// マスク画像を作成
+
+		SelectObject hmaskdc,homaskbmp		// マスク用デバイスコンテキストにオリジナルを戻す
+
+		DeleteDC hmaskdc					// マスク用デバイスコンテキストの破棄
+	//}
+
+	/* デバイスコンテキストの破棄 */
+	SelectObject hdevcon,hobmp			// デバイスコンテキストにオリジナルを戻す
+	DeleteDC hdevcon					// デバイスコンテキストの破棄
+
+	/* アイコンを作る */
+	iconinfo=1,0,0,hmaskbmp,hbmp
+	piconinfo = varptr(iconinfo)		// ICONINFO構造体
+	CreateIconIndirect piconinfo		// アイコンを作成
+	hicon = stat						// アイコンハンドル
+
+	/* ビットマップの破棄 */
+	DeleteObject hbmp					// ビットマップの破棄
+	DeleteObject hmaskbmp				// マスク用ビットマップの破棄
+return hicon
+#global
+
+/**********************************************************/
+
+#module tticon
+
+#const	ICON_ID				0
+#const	TTICON_ADD			0
+#const	TTICON_MODIFY		1
+#const	TTICON_DEL			2
+#const	FALSE				0
+#define	WM_TRAYEVENTSTART	$900
+
+/**********************************************************/
+// モジュール初期化
+/**********************************************************/
+#deffunc _init_tticon
+	TTICON_SIZE	= 16
+	_hicon		= 0
+	gsel 0
+	_hwnd		= hwnd
+return
+
+/**********************************************************/
+// 指定されたウィンドウからアイコンを作成し、
+// タスクトレイアイコンとして登録
+/**********************************************************/
+#deffunc add_tticon var wid, var posx, var posy, var tooltip
+	tooltip = strmid(tooltip,0,63)
+	if _hicon {
+		DestroyIcon _hicon					// アイコンハンドル破棄
+		msg = TTICON_MODIFY
+	}
+	else {
+		msg = TTICON_ADD
+	}
+	_hicon = make_icon(wid,posx,posy,TTICON_SIZE,TTICON_SIZE,0)
+	/* NOTIFYICONDATA構造体 */
+	dim NOTIFYICONDATA,88/4
+	/* 構造体のサイズ,ウィンドウハンドル,アイコンid,フラグ, */
+	/* メッセージID,アイコンハンドル,ツールチップ をセット  */
+	NOTIFYICONDATA = 88,_hwnd,ICON_ID,7,WM_TRAYEVENTSTART,_hicon
+	len = strlen(tooltip)
+	memcpy NOTIFYICONDATA,tooltip,len,4*6
+	/* アイコンを登録または変更 */
+	Shell_NotifyIconA msg,varptr(NOTIFYICONDATA)
+	/* アイコンを弄られたらこのラベルにジャンプするよう指定 */
+	gsel 0
+	oncmd gosub *OnTrayIconEvent@,WM_TRAYEVENTSTART
+return
+
+/**********************************************************/
+// タスクトレイアイコンを削除し、アイコンハンドルを破棄
+/**********************************************************/
+#deffunc del_tticon onexit
+	dim NOTIFYICONDATA,88/4
+	NOTIFYICONDATA = 88,_hwnd,ICON_ID
+	Shell_NotifyIconA TTICON_DEL,varptr(NOTIFYICONDATA)		// アイコンを削除
+	if _hicon {
+		DestroyIcon _hicon					// アイコンハンドル破棄
+	}
+return
+
+#global
+
+/**********************************************************/
+
+_init_tticon

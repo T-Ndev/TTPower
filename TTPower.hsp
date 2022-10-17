@@ -1,0 +1,90 @@
+#include "gm_tticon.hsp"
+#include "Kernel32.as"
+
+*main
+	title "TTPower"
+	
+	buffer 0
+	buffer 2
+
+	// 構造体の情報を保持するstr配列を定義
+	sdim strlpSystemPowerStatus, 6
+	
+	repeat
+		gosub *refresh
+		wait 6000
+	loop
+	
+	stop
+
+*refresh
+	gosub *getPowerStatus
+	gosub *initBuffer
+	gosub *refreshTaskTray
+	return
+
+*getPowerStatus
+	// 構造体の代わりに配列を定義
+	dim lpSystemPowerStatus, 3
+	
+	// バッテリーステータスを取得
+	GetSystemPowerStatus varptr(lpSystemPowerStatus)
+	
+	// lpSystemPowerStatus(0)をバイトごとに分解するため16進数に変換
+	bytes_to_hex = strf("%08x", lpSystemPowerStatus(0))
+	
+	// 0:ACオフライン 1:ACオンライン 2:不明
+	strlpSystemPowerStatus(0) = strmid(bytes_to_hex, 6, 2)
+	// 1:66%以上 2:33%未満 4:5%未満 8:充電中 128:バッテリーなし 256:不明
+	strlpSystemPowerStatus(1) = strmid(bytes_to_hex, 4, 2)
+	// 電池残量(%)
+	strlpSystemPowerStatus(2) = strf("%d","$" + strmid(bytes_to_hex, 2, 2))
+	// 予約
+	strlpSystemPowerStatus(3) = strmid(bytes_to_hex, 0, 2)
+	// バッテリーの残り時間(秒)
+	strlpSystemPowerStatus(4) = str(lpSystemPowerStatus(1))
+	// フル充電時のバッテリーの寿命(秒)
+	strlpSystemPowerStatus(5) = str(lpSystemPowerStatus(2))
+	return
+
+*initBuffer
+	gsel 0
+	cls 4
+	color 255, 255, 255
+	font "Ricty Diminished",16
+	if (strlpSystemPowerStatus(2) = 100) {
+		mes "F"
+	} else {
+		mes strlpSystemPowerStatus(2)
+	}
+	mesx = ginfo_mesx
+	margin_X = (16 - ginfo_mesx) / 2
+
+	gsel 2
+	cls 4
+	dim p2, 4
+	dim p3, 4
+	dim p4, 4
+	dim p5, 4
+	p2 = margin_X, 16 + margin_X, 16 + margin_X, margin_X
+	p3 = 0, 0, 16, 16
+	p4 = 0, 16, 16, 0
+	p5 = 0, 0, 16, 16
+	gsquare 0, p2, p3, p4 ,p5
+	return
+
+*refreshTaskTray
+	window_id = 2
+	pos_x = 0
+	pos_y = 0
+	tooltip = "TTPower"
+	add_tticon window_id, pos_x, pos_y, tooltip
+	return
+
+*onTrayIconEvent
+	if (lparam = $201 | lparam = $204) {
+		dialog "終了しますか？", 2, "終了確認"
+		if (stat = 6) : end
+	}
+	return
+	
